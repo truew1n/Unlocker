@@ -5,11 +5,13 @@
 typedef struct ParamProc {
     HANDLE ComboBox;
     uint8_t *Mainloop;
+    uint16_t *Filepath;
 } ParamProc;
 
+void ResolveAction(uint16_t *Action, uint16_t *Filepath);
 LRESULT CALLBACK WinProcedure(HWND HWnd, UINT UMsg, WPARAM WParam, LPARAM LParam);
 
-int main(int argc, char *argv[]) {
+int main(int argc, uint8_t *argv[]) {
     HINSTANCE WinInstance = GetModuleHandleW(NULL);
     
     WNDCLASSW WinClass = {0};
@@ -83,33 +85,60 @@ int main(int argc, char *argv[]) {
         NULL
     );
 
-    MSG msg = { 0 };
     uint8_t running = 1;
-    if (argc >= 2) {
-        printf("Selected file: %s\n", argv[1]);
-    } else {
-        printf("No file selected.\n");
-    }
-    
     ParamProc ProcData;
     ProcData.ComboBox = HComboBox;
     ProcData.Mainloop = &running;
+    
+    if (argc >= 2) {
+        uint32_t StrLength = MultiByteToWideChar(CP_UTF8, 0, argv[1], -1, NULL, 0);
+
+        ProcData.Filepath = (uint16_t *) malloc(sizeof(uint16_t)*StrLength);
+
+        MultiByteToWideChar(CP_UTF8, 0, argv[1], -1, ProcData.Filepath, StrLength);
+    } else {
+        ProcData.Filepath = NULL;
+    }
+
+    MessageBoxExW(NULL, ProcData.Filepath, L"Info!", MB_ICONWARNING | MB_OK, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US));
+    
     SetWindowLongPtr(Window, GWLP_USERDATA, (LONG_PTR) &ProcData);
 
+    MSG Msg = { 0 };
     while (running) {
-        while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
-            switch (msg.message) {
+        while (PeekMessageW(&Msg, NULL, 0, 0, PM_REMOVE)) {
+            switch (Msg.message) {
                 case WM_QUIT: {
                     running = 0;
                     break;
                 }
             }
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
+            TranslateMessage(&Msg);
+            DispatchMessageW(&Msg);
         }
     }
     
     return 0;
+}
+
+uint8_t IsDirectory(uint16_t* Filepath)
+{
+    DWORD Attributes = GetFileAttributes(Filepath);
+    return (Attributes != INVALID_FILE_ATTRIBUTES && (Attributes & FILE_ATTRIBUTE_DIRECTORY));
+}
+
+void ResolveAction(uint16_t *Action, uint16_t *Filepath)
+{
+    if(IsDirectory(Filepath)) {
+
+    } else {
+        if(!wcscmp(Action, L"Delete")) {
+            uint8_t DeleteResult = DeleteFileW(Filepath);
+            if(!DeleteResult) {
+                MessageBoxExW(NULL, L"Couldn't delete file!", L"Deletion Failed!", MB_ICONWARNING | MB_OK, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US));
+            }
+        }
+    }
 }
 
 LRESULT CALLBACK WinProcedure(HWND HWnd, UINT UMsg, WPARAM WParam, LPARAM LParam)
@@ -122,19 +151,23 @@ LRESULT CALLBACK WinProcedure(HWND HWnd, UINT UMsg, WPARAM WParam, LPARAM LParam
         case WM_COMMAND: {
             switch(LOWORD(WParam)) {
                 case 1: {
-                    HANDLE HComboBox = (((ParamProc *) GetWindowLongPtr(HWnd, GWLP_USERDATA))->ComboBox);
+                    ParamProc *Parameter = (ParamProc *) GetWindowLongPtr(HWnd, GWLP_USERDATA);
+                    HANDLE HComboBox = Parameter->ComboBox;
 
-                    int selectedIndex = SendMessage(HComboBox, CB_GETCURSEL, 0, 0);
+                    int SelectedIndex = SendMessage(HComboBox, CB_GETCURSEL, 0, 0);
 
-                    if (selectedIndex != CB_ERR)
+                    if (SelectedIndex != CB_ERR)
                     {
-                        int textLength = SendMessageW(HComboBox, CB_GETLBTEXTLEN, selectedIndex, 0);
-                        wchar_t* buffer = (wchar_t *) malloc(sizeof(wchar_t) * (textLength + 1));
+                        int TextLength = SendMessageW(HComboBox, CB_GETLBTEXTLEN, SelectedIndex, 0);
+                        uint16_t* Buffer = (uint16_t *) malloc(sizeof(uint16_t) * (TextLength + 1));
 
-                        SendMessageW(HComboBox, CB_GETLBTEXT, selectedIndex, (LPARAM) buffer);
-                        MessageBoxW(HWnd, buffer, L"Selected Item", MB_OK | MB_ICONINFORMATION);
+                        SendMessageW(HComboBox, CB_GETLBTEXT, SelectedIndex, (LPARAM) Buffer);
+                        ResolveAction(
+                            Buffer,
+                            Parameter->Filepath
+                        );
                         
-                        free(buffer);
+                        free(Buffer);
                     }
                     break;
                 }

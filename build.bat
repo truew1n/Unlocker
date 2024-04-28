@@ -1,3 +1,3 @@
 @echo off
 
-gcc -o main main.c
+gcc -o main main.c -mwindows
