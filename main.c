@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <windows.h>
 
+
 typedef struct ParamProc {
     HANDLE ComboBox;
     uint8_t *Mainloop;
@@ -93,9 +94,10 @@ int main(int argc, uint8_t *argv[]) {
     if (argc >= 2) {
         uint32_t StrLength = MultiByteToWideChar(CP_UTF8, 0, argv[1], -1, NULL, 0);
 
-        ProcData.Filepath = (uint16_t *) malloc(sizeof(uint16_t)*StrLength);
+        ProcData.Filepath = (uint16_t *) malloc(sizeof(uint16_t)*StrLength + 1);
 
         MultiByteToWideChar(CP_UTF8, 0, argv[1], -1, ProcData.Filepath, StrLength);
+        ProcData.Filepath[StrLength] = L'\0';
     } else {
         ProcData.Filepath = NULL;
     }
@@ -118,23 +120,39 @@ int main(int argc, uint8_t *argv[]) {
         }
     }
     
+    free(ProcData.Filepath);
     return 0;
 }
 
 uint8_t IsDirectory(uint16_t* Filepath)
 {
-    DWORD Attributes = GetFileAttributes(Filepath);
+    DWORD Attributes = GetFileAttributesW(Filepath);
     return (Attributes != INVALID_FILE_ATTRIBUTES && (Attributes & FILE_ATTRIBUTE_DIRECTORY));
 }
+
 
 void ResolveAction(uint16_t *Action, uint16_t *Filepath)
 {
     if(IsDirectory(Filepath)) {
+        SHFILEOPSTRUCTW FileOp;
+        ZeroMemory(&FileOp, sizeof(FileOp));
+        FileOp.hwnd = NULL;
+        FileOp.wFunc = FO_DELETE;
+        FileOp.pFrom = Filepath;
+        FileOp.pTo = Filepath;
+        FileOp.fFlags = FOF_NOERRORUI | FOF_SILENT | FOF_NOCONFIRMATION | FOF_NOCONFIRMMKDIR;
 
+        int32_t OperationResult = SHFileOperationW(&FileOp);
+        if (OperationResult != 0) {
+            wprintf(L"%ls\n", Filepath);
+            printf("SHFileOperationW failed with error code: %d\n", OperationResult);
+            MessageBoxExW(NULL, L"Couldn't delete directory!", L"Deletion Failed!", MB_ICONWARNING | MB_OK, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US));
+        }
     } else {
         if(!wcscmp(Action, L"Delete")) {
             uint8_t DeleteResult = DeleteFileW(Filepath);
             if(!DeleteResult) {
+                printf("%i", GetLastError());
                 MessageBoxExW(NULL, L"Couldn't delete file!", L"Deletion Failed!", MB_ICONWARNING | MB_OK, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US));
             }
         }
